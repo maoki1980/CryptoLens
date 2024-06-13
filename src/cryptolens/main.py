@@ -469,10 +469,8 @@ if df_coins.empty or df_categories.empty:
 
     # symbolのリストを作成する
     l_coin_symbols = list(df_coins["symbol"].unique())
-    l_coin_symbols = l_coin_symbols[-10:]
     # idのリストを作成する
     l_coin_ids = list(df_coins["coinId"].unique())
-    l_coin_ids = l_coin_ids[-10:]
 
     # すべてのsymbolについて売買比率を取得する
     df_bybit_long_short_ratio = get_all_ratios(l_coin_symbols)
