@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/maoki1980/CryptoLens/blob/main/src/cryptolens/main.ipynb)
+
 # In[ ]:
 
 
@@ -47,12 +49,22 @@ def strip_space(lst):
 # In[ ]:
 
 
-# featherデータの中の更新日時を確認してデータを再取得するかのフラグを出力する関数
+# 仮想通貨のfeatherデータの中の更新日時を確認してデータを再取得するかのフラグを出力する関数
 def need_update_coin_data(df, days):
     now = datetime.now().astimezone(ZoneInfo("Asia/Tokyo"))
     latest_ratio_update = df["ratioUpdateTime"].max()
-    latest_coin_update = df["CoinUpdateTime"].max()
+    latest_coin_update = df["coinUpdateTime"].max()
     latest_update = max(latest_ratio_update, latest_coin_update)
+    return (now - latest_update) > timedelta(days=days)
+
+
+# In[ ]:
+
+
+# カテゴリのfeatherデータの中の更新日時を確認してデータを再取得するかのフラグを出力する関数
+def need_update_category_data(df, days):
+    now = datetime.now().astimezone(ZoneInfo("Asia/Tokyo"))
+    latest_update = df["categoryUpdateTime"].max()
     return (now - latest_update) > timedelta(days=days)
 
 
@@ -99,7 +111,7 @@ def get_coingecko_categories_list(api_key):
     df["updated_at"] = df["updated_at"].dt.floor("s")
     # 列名変更
     columns = [
-        "catecoryId",
+        "categoryId",
         "categoryName",
         "categoryCap",
         "categoryCapChg24h",
@@ -212,7 +224,7 @@ def get_coingecko_coin_info(id, api_key):
         ),
         "sentimentVotesUp%": json.get("sentiment_votes_up_percentage"),
         "watchlistUsers": json.get("watchlist_portfolio_users"),
-        "CoinUpdateTime": json.get("last_updated"),
+        "coinUpdateTime": json.get("last_updated"),
     }
     json_info["platforms"] = list(json_info["platforms"].keys())
     df = pd.DataFrame([json_info])
@@ -249,9 +261,9 @@ def get_all_info(l_ids, api_key, wait_time=2.05):
     df["atlDate"] = pd.to_datetime(df["atlDate"], utc=True)
     df["atlDate"] = df["atlDate"].dt.tz_convert("Asia/Tokyo")
     df["atlDate"] = df["atlDate"].dt.floor("s")
-    df["CoinUpdateTime"] = pd.to_datetime(df["CoinUpdateTime"], utc=True)
-    df["CoinUpdateTime"] = df["CoinUpdateTime"].dt.tz_convert("Asia/Tokyo")
-    df["CoinUpdateTime"] = df["CoinUpdateTime"].dt.floor("s")
+    df["coinUpdateTime"] = pd.to_datetime(df["coinUpdateTime"], utc=True)
+    df["coinUpdateTime"] = df["coinUpdateTime"].dt.tz_convert("Asia/Tokyo")
+    df["coinUpdateTime"] = df["coinUpdateTime"].dt.floor("s")
 
     df["categories"] = df["categories"].apply(remove_empty_elements)
     df["platforms"] = df["platforms"].apply(remove_empty_elements)
@@ -264,7 +276,7 @@ def get_all_info(l_ids, api_key, wait_time=2.05):
     df["coinName"] = df["coinName"].str.strip()
     df["coinSlug"] = df["coinSlug"].str.strip()
     df["assetPlatformId"] = df["assetPlatformId"].str.strip()
-    
+
     df["coinCapChg%24h"] = df["coinCapChg%24h"] / 100
     df["athChg%"] = df["athChg%"] / 100
     df["atlChg%"] = df["atlChg%"] / 100
@@ -405,30 +417,43 @@ elapsed_days = 5
 
 
 # featherファイルを読み込んでデータの更新日時を確認する
-l_feather_files = glob.glob(os.path.join(data_dir, "*.feather"))
-if l_feather_files:
-    feather_file_path = max(l_feather_files, key=os.path.basename)
-    feather_file_name = os.path.basename(feather_file_path)
-    df_coins = pd.read_feather(feather_file_path)
-    if need_update_coin_data(df_coins, elapsed_days):
+l_feather_coins_files = glob.glob(os.path.join(data_dir, "df_coins_*.feather"))
+l_feather_categories_files = glob.glob(
+    os.path.join(data_dir, "df_categories_*.feather")
+)
+if l_feather_coins_files and l_feather_categories_files:
+    feather_coins_file_path = max(l_feather_coins_files, key=os.path.basename)
+    feather_coins_file_name = os.path.basename(feather_coins_file_path)
+    feather_categories_file_path = max(l_feather_categories_files, key=os.path.basename)
+    feather_categories_file_name = os.path.basename(feather_categories_file_path)
+    df_coins = pd.read_feather(feather_coins_file_path)
+    df_categories = pd.read_feather(feather_categories_file_path)
+    if need_update_coin_data(df_coins, elapsed_days) and need_update_category_data(
+        df_coins, elapsed_days
+    ):
         print(
-            f'The data in "{feather_file_name}" is older than {elapsed_days} days. Re-fetching data.'
+            f"The data in feather files is older than {elapsed_days} days. Re-fetching data."
         )
         df_coins = pd.DataFrame()
+        df_categories = pd.DataFrame()
     else:
         latest_ratio_update = df_coins["ratioUpdateTime"].max()
-        latest_coin_update = df_coins["CoinUpdateTime"].max()
-        latest_update = max(latest_ratio_update, latest_coin_update)
-        print(f'Loaded data from "{feather_file_name}", latest update at {latest_update}')
+        latest_coin_update = df_coins["coinUpdateTime"].max()
+        latest_category_update = df_categories["categoryUpdateTime"].max()
+        latest_update = max(
+            latest_ratio_update, latest_coin_update, latest_category_update
+        )
+        print(f"Loaded data from feather files, latest update at {latest_update}")
 else:
     df_coins = pd.DataFrame()
+    df_categories = pd.DataFrame()
 
 
 # In[ ]:
 
 
 # 仮想通貨データを作成する
-if df_coins.empty:
+if df_coins.empty or df_categories.empty:
     # ByBitの仮想通貨リストを取得 (無期限先物)
     df_bybit_coins = get_bybit_coins_list("linear")
     print(f"ByBit coins df size: {df_bybit_coins.shape}")
@@ -444,8 +469,10 @@ if df_coins.empty:
 
     # symbolのリストを作成する
     l_coin_symbols = list(df_coins["symbol"].unique())
+    l_coin_symbols = l_coin_symbols[-10:]
     # idのリストを作成する
     l_coin_ids = list(df_coins["coinId"].unique())
+    l_coin_ids = l_coin_ids[-10:]
 
     # すべてのsymbolについて売買比率を取得する
     df_bybit_long_short_ratio = get_all_ratios(l_coin_symbols)
@@ -466,35 +493,63 @@ if df_coins.empty:
     # Noneを欠損値に置換する
     df_coins = df_coins.replace({None: np.nan})
 
-    # 仮想通貨リストをfeatherファイルに保存
     now = datetime.now().astimezone(ZoneInfo("Asia/Tokyo")).strftime("%Y%m%d%H%M")
-    feather_file_name = f"df_coins_{now}.feather"
-    feather_file_path = os.path.join(data_dir, feather_file_name)
-    df_coins.to_feather(feather_file_path)
-    print(f'Data saved to "{feather_file_name}"')
+
+    # 仮想通貨リストをfeatherファイルに保存
+    feather_coins_file_name = f"df_coins_{now}.feather"
+    feather_coins_file_path = os.path.join(data_dir, feather_coins_file_name)
+    df_coins.to_feather(feather_coins_file_path)
+    print(f'Data saved to "{feather_coins_file_name}"')
+
+    # CoinGeckoのカテゴリリストを取得
+    df_categories = get_coingecko_categories_list(coingecko_api_key)
+    df_categories["categoryId"] = df_categories[
+        "categoryId"
+    ].str.strip()
+    df_categories["categoryName"] = df_categories[
+        "categoryName"
+    ].str.strip()
+    print(f"CoinGecko categories df size: {df_categories.shape}")
+
+    # カテゴリリストをfeatherファイルに保存
+    feather_categories_file_name = f"df_categories_{now}.feather"
+    feather_categories_file_path = os.path.join(data_dir, feather_categories_file_name)
+    df_categories.to_feather(feather_categories_file_path)
+    print(f'Data saved to "{feather_categories_file_name}"')
 
     # featherファイルから再読み込み
-    df_coins = pd.read_feather(feather_file_path)
+    df_coins = pd.read_feather(feather_coins_file_path)
+    df_categories = pd.read_feather(feather_categories_file_path)
 
 
 # In[ ]:
 
 
 # 2つのplatforms列が等しくなければ警告を出す
-df_mismatch_platforms = df_coins[df_coins.apply(lambda x: list(x["coinPlatforms"]) != list(x["platforms"]), axis=1)]
+df_mismatch_platforms = df_coins[
+    df_coins.apply(lambda x: list(x["coinPlatforms"]) != list(x["platforms"]), axis=1)
+]
 if not df_mismatch_platforms.empty:
-    print('Warning: There are rows with unequal lists in columns "coinPlatforms" and "platforms"')
+    print(
+        'Warning: There are rows with unequal lists in columns "coinPlatforms" and "platforms"'
+    )
 
 
 # In[ ]:
 
 
 # assetPlatformIdがcoinPlatformsの最初の要素と等しくなければ警告を出す
-df_coins["1stCoinPlatform"] = df_coins["coinPlatforms"].apply(lambda x: x[0] if len(x) > 0 else np.nan)
+df_coins["1stCoinPlatform"] = df_coins["coinPlatforms"].apply(
+    lambda x: x[0] if len(x) > 0 else np.nan
+)
 df_coins_filtered = df_coins.dropna(subset=["assetPlatformId"])
-df_mismatch_platform = df_coins_filtered[df_coins_filtered["assetPlatformId"] != df_coins_filtered["1stCoinPlatform"]]
+df_mismatch_platform = df_coins_filtered[
+    df_coins_filtered["assetPlatformId"] != df_coins_filtered["1stCoinPlatform"]
+]
 if not df_mismatch_platform.empty:
-    print('Warning: There are rows where "assetPlatformId" is not equal to the first element of "coinPlatforms"')
+    print(
+        'Warning: There are rows where "assetPlatformId" is not equal to the first element of "coinPlatforms"'
+    )
 
 
 # In[ ]:
@@ -503,7 +558,9 @@ if not df_mismatch_platform.empty:
 # 時価総額のある仮想通貨を抽出
 df_coins = df_coins.dropna(subset=["coinCap"])
 df_coins = df_coins[df_coins["coinCap"] > 0]
-df_coins = df_coins.sort_values(by=["coinCap"], ascending=[False]).reset_index(drop=True)
+df_coins = df_coins.sort_values(by=["coinCap"], ascending=[False]).reset_index(
+    drop=True
+)
 
 
 # In[ ]:
@@ -521,20 +578,12 @@ df_xlsx.to_excel(xlsx_file_path, sheet_name="df_coins", index=False)
 # In[ ]:
 
 
-# CoinGeckoのカテゴリリストを取得
-df_coingecko_categories = get_coingecko_categories_list(coingecko_api_key)
-df_coingecko_categories["categoryId"] = df_coingecko_categories["categoryId"].str.strip()
-df_coingecko_categories["categoryName"] = df_coingecko_categories["categoryName"].str.strip()
-print(f"CoinGecko categories df size: {df_coingecko_categories.shape}")
-
-
-# In[ ]:
-
-
 # 時価総額のあるカテゴリを抽出
-df_categories = df_coingecko_categories.dropna(subset=["categoryCap"])
+df_categories = df_categories.dropna(subset=["categoryCap"])
 df_categories = df_categories[df_categories["categoryCap"] > 0]
-df_categories = df_categories.sort_values(by=["categoryCap"], ascending=[False]).reset_index(drop=True)
+df_categories = df_categories.sort_values(
+    by=["categoryCap"], ascending=[False]
+).reset_index(drop=True)
 
 
 # In[ ]:
@@ -553,7 +602,17 @@ df_xlsx.to_excel(xlsx_file_path, sheet_name="df_categories", index=False)
 
 
 df_coins_exploded = df_coins.explode("categories")
-df_coins_exploded = df_coins_exploded.dropna(subset=["categories"]).reset_index(drop=True)
+df_coins_exploded = df_coins_exploded.dropna(subset=["categories"]).reset_index(
+    drop=True
+)
 df_coins_exploded = df_coins_exploded.rename(columns={"categories": "categoryName"})
-df_coins_exploded = pd.merge(df_coins_exploded, df_categories, on=["categoryName"], how="outer", indicator=True)
+df_coins_exploded = pd.merge(
+    df_coins_exploded, df_categories, on=["categoryName"], how="outer", indicator=True
+)
+
+diff = df_coins_exploded[df_coins_exploded["_merge"] == "left_only"]
+l_only_coin_categories = diff["categoryName"].unique()
+
+diff = df_coins_exploded[df_coins_exploded["_merge"] == "right_only"]
+l_only_category_list = diff["categoryName"].unique()
 
