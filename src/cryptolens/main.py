@@ -501,12 +501,8 @@ if df_coins.empty or df_categories.empty:
 
     # CoinGeckoのカテゴリリストを取得
     df_categories = get_coingecko_categories_list(coingecko_api_key)
-    df_categories["categoryId"] = df_categories[
-        "categoryId"
-    ].str.strip()
-    df_categories["categoryName"] = df_categories[
-        "categoryName"
-    ].str.strip()
+    df_categories["categoryId"] = df_categories["categoryId"].str.strip()
+    df_categories["categoryName"] = df_categories["categoryName"].str.strip()
     print(f"CoinGecko categories df size: {df_categories.shape}")
 
     # カテゴリリストをfeatherファイルに保存
@@ -564,6 +560,48 @@ df_coins = df_coins.sort_values(by=["coinCap"], ascending=[False]).reset_index(
 # In[ ]:
 
 
+# 必要な列を選択
+df_coins = df_coins[
+    [
+        "symbol",
+        "coin",
+        "coinId",
+        "coinName",
+        "categories",
+        "coinPlatforms",
+        "coinCap",
+        "coinCapChg%24h",
+        "coinLaunchTime",
+        "watchlistUsers",
+        "xFollowers",
+        "sentimentVotesUp%",
+        "buyRatio",
+        "ratioUpdateTime",
+        "currentPrice",
+        "ath",
+        "athChg%",
+        "athDate",
+        "atl",
+        "atlChg%",
+        "atlDate",
+        "priceChg%1h",
+        "priceChg%24h",
+        "priceChg%7d",
+        "priceChg%14d",
+        "priceChg%30d",
+        "priceChg%60d",
+        "priceChg%200d",
+        "coinUpdateTime",
+    ]
+]
+df_coins = df_coins.dropna()
+df_coins = df_coins[df_coins["xFollowers"] > 0]
+df_coins = df_coins[df_coins["atl"] > 0].reset_index(drop=True)
+
+
+# In[ ]:
+
+
 # 仮想通貨データをExcelに出力する
 df_xlsx = df_coins.copy()
 for col in df_xlsx.select_dtypes(include=["datetimetz"]).columns:
@@ -582,6 +620,22 @@ df_categories = df_categories[df_categories["categoryCap"] > 0]
 df_categories = df_categories.sort_values(
     by=["categoryCap"], ascending=[False]
 ).reset_index(drop=True)
+
+
+# In[ ]:
+
+
+# 欠損のあるデータを削除
+df_categories = df_categories[
+    [
+        "categoryId",
+        "categoryName",
+        "categoryCap",
+        "categoryVol24h",
+        "categoryUpdateTime",
+    ]
+]
+df_categories = df_categories.dropna().reset_index(drop=True)
 
 
 # In[ ]:
@@ -614,3 +668,5 @@ l_only_coin_categories = diff["categoryName"].unique()
 diff = df_coins_exploded[df_coins_exploded["_merge"] == "right_only"]
 l_only_category_list = diff["categoryName"].unique()
 
+
+# In[ ]:
